@@ -161,10 +161,27 @@ String readVoltage() {
   return String(VBusVoltage, 2) + "V";
 }
 
-//read encoder pos to display on webpage
 String readEncoderPos(){
   readEncoder();
-  return String(total_encoder_counts);
+  
+  // Capture the initial encoder value at power-on (first call only)
+  static signed long encoder_offset = 0;
+  static bool first_call = true;
+  if (first_call) {
+    encoder_offset = total_encoder_counts;
+    first_call = false;
+  }
+  
+  // Calculate delta (change) since power-on
+  signed long encoder_delta = total_encoder_counts - encoder_offset;
+  
+  // Convert to output-shaft degrees
+  // encoder_delta is in raw counts (0-4096 per motor revolution)
+  // GEAR_RATIO is motor revolutions per output-shaft revolution
+  // So: output_degrees = (encoder_delta / 4096) * 360 / GEAR_RATIO
+  double output_degrees = (double)encoder_delta * 360.0 / (4096.0 * GEAR_RATIO);
+  
+  return String(output_degrees, 2) + "°";
 }
 
 String readTMCStatus(){
