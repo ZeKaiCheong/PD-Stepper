@@ -1,19 +1,13 @@
 /*
- * PD Stepper Webpage Example:
+ * UVAD Web Server:
  * 
  *********  Software Version 1.0 ******************
  * 
  *    How to Use:
- * 1. Connect to created WiFi Network named "PD Stepper"
+ * 1. Connect to created WiFi Network named "UVAD"
  * 2. On a browser visit 192.168.4.1
+ * 3. Use the webpage to control the stepper motor and change settings
  * 
- *  For more info and to purchase PD Stepper kits visit:
- *  https://thingsbyjosh.com
- * 
- * TODO:
- * - More TMC error conditions (including power bad?)
- * - Stall guard disabled at lower speeds
- * - Fix non smooth position control (due to webserver interuptions)
 */
 
 
@@ -28,7 +22,7 @@
 Preferences preferences;
 
 //access point SSID and password (password = "" for no password)
-const char *ssid = "PD Stepper";
+const char *ssid = "UVAD";
 const char *password = "";
 
 AsyncWebServer server(80);
