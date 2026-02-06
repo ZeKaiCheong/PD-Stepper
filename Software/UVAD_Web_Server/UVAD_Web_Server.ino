@@ -76,6 +76,8 @@ bool state = 0; //step state
 const int MOTOR_STEPS_PER_REV = 200;      // NEMA17 typical full steps/rev
 const long COUNTS_PER_FULL_STEP = 256;    // internal counter units per full-step (preserve existing resolution)
 float GEAR_RATIO = 30.0;                   // motor revolutions per output-shaft revolution (1.0 = direct drive)
+const int SMALL_ANGLE_DEG = 45;            // small step angle (output-shaft degrees)
+const int LARGE_ANGLE_DEG = 90;            // large step angle (output-shaft degrees)
 // Derived helper: counts for one output-shaft revolution
 long countsPerOutputRev(){
   return (long)( (long)MOTOR_STEPS_PER_REV * (long)COUNTS_PER_FULL_STEP * GEAR_RATIO );
@@ -173,9 +175,9 @@ String readEncoderPos(){
   // encoder_delta is in raw counts (0-4096 per motor revolution)
   // GEAR_RATIO is motor revolutions per output-shaft revolution
   // So: output_degrees = (encoder_delta / 4096) * 360 / GEAR_RATIO
-  double output_degrees = (double)encoder_delta * 360.0 / (4096.0 * GEAR_RATIO);
+  long output_degrees = lround((double)encoder_delta * 360.0 / (4096.0 * GEAR_RATIO));
   
-  return String(output_degrees, 2) + "°";
+  return String(output_degrees) + "°";
 }
 
 String readTMCStatus(){
@@ -232,6 +234,14 @@ String processor(const String& var)
 
   if(var == "standstill_mode"){
      return String(standstillMode);
+  }
+
+  if(var == "small_angle"){
+    return String(SMALL_ANGLE_DEG);
+  }
+
+  if(var == "large_angle"){
+    return String(LARGE_ANGLE_DEG);
   }
 }
 
@@ -387,10 +397,10 @@ void loop() {
 
   if (posUpdatePending) {
     stepper_driver.moveAtVelocity(0); // Stop velocity mode
-    if (pendingPosMode == 1)      setPoint -= countsFromDegrees(90.0);   // large = 90°
-    else if (pendingPosMode == 2) setPoint -= countsFromDegrees(45.0);   // small = 45°
-    else if (pendingPosMode == 3) setPoint += countsFromDegrees(45.0);
-    else if (pendingPosMode == 4) setPoint += countsFromDegrees(90.0);
+    if (pendingPosMode == 1)      setPoint -= countsFromDegrees(LARGE_ANGLE_DEG);   // large = 90°
+    else if (pendingPosMode == 2) setPoint -= countsFromDegrees(SMALL_ANGLE_DEG);   // small = 45°
+    else if (pendingPosMode == 3) setPoint += countsFromDegrees(SMALL_ANGLE_DEG);
+    else if (pendingPosMode == 4) setPoint += countsFromDegrees(LARGE_ANGLE_DEG);
     posUpdatePending = false;
   }
 

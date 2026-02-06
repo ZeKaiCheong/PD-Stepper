@@ -101,7 +101,6 @@ const char index_html[] PROGMEM = R"rawliteral(
     border-radius: 10px;
     
   }
-
   
   
   /* ----- CHECKBOX ------- */
@@ -295,14 +294,13 @@ const char index_html[] PROGMEM = R"rawliteral(
         <span id="position">Loading</span>
         <br>
         <br>
-        <!-- <span class="stat-labels">Stall Guard:</span>
-        <span id="stallguard">Loading</span> -->
+        <span class="stat-labels">Stall Guard:</span>
+        <span id="stallguard">Loading</span>
       </div>
     </form>
  
     <hr>
   
-    <!--
     <form action="/save" method="post">
     <h2>Settings</h2>
       <div id="middle-box">
@@ -391,7 +389,6 @@ const char index_html[] PROGMEM = R"rawliteral(
         <input class="save-button" type="submit" value="Save">
       </div>
     </form>
-    -->
     
     
     <br>
@@ -412,10 +409,10 @@ const char index_html[] PROGMEM = R"rawliteral(
     
    <h2>Position Control</h2>
    <div id="bottom-box">
-    <button class="pos-button" type="submit" onclick="but1()">-%large_angle%&deg;</button>
-    <button class="pos-button" type="submit" onclick="but2()">-%small_angle%&deg;</button>
-    <button class="pos-button" type="submit" onclick="but3()">+%small_angle%&deg;</button>
-    <button class="pos-button" type="submit" onclick="but4()">+%large_angle%&deg;</button>
+    <button class="pos-button" type="submit" onclick="but1()"><<</button>
+    <button class="pos-button" type="submit" onclick="but2()"><</button>
+    <button class="pos-button" type="submit" onclick="but3()">></button>
+    <button class="pos-button" type="submit" onclick="but4()">>></button>
    </div>
    
     <br>
@@ -429,53 +426,51 @@ const char index_html[] PROGMEM = R"rawliteral(
 </body></html>
 
 <script>
-    /* Auto fill dropdowns with saved values */ 
-    /*
-    var temp = "%microsteps%";
-    var mySelect = document.getElementById('microsteps');
-    for(var i, j = 0; i = mySelect.options[j]; j++) {
+  /* Auto fill dropdowns with saved values */ 
+  var temp = "%microsteps%";
+  var mySelect = document.getElementById('microsteps');
+  for(var i, j = 0; i = mySelect.options[j]; j++) {
       if(i.value == temp) {
-        mySelect.selectedIndex = j;
-        break;
+          mySelect.selectedIndex = j;
+          break;
       }
-    }
+  }
   
-    var temp = "%voltage%";
-    var mySelect = document.getElementById('setvoltage');
-    for(var i, j = 0; i = mySelect.options[j]; j++) {
+  var temp = "%voltage%";
+  var mySelect = document.getElementById('setvoltage');
+  for(var i, j = 0; i = mySelect.options[j]; j++) {
       if(i.value == temp) {
-        mySelect.selectedIndex = j;
-        break;
+          mySelect.selectedIndex = j;
+          break;
       }
-    }
+  }
   
-    var temp = "%current%";
-    var mySelect = document.getElementById('current');
-    for(var i, j = 0; i = mySelect.options[j]; j++) {
+  var temp = "%current%";
+  var mySelect = document.getElementById('current');
+  for(var i, j = 0; i = mySelect.options[j]; j++) {
       if(i.value == temp) {
-        mySelect.selectedIndex = j;
-        break;
+          mySelect.selectedIndex = j;
+          break;
       }
-    }
+  }
   
-    var temp = "%stall_threshold%";
-    var mySelect = document.getElementById('stall_threshold');
-    for(var i, j = 0; i = mySelect.options[j]; j++) {
+  var temp = "%stall_threshold%";
+  var mySelect = document.getElementById('stall_threshold');
+  for(var i, j = 0; i = mySelect.options[j]; j++) {
       if(i.value == temp) {
-        mySelect.selectedIndex = j;
-        break;
+          mySelect.selectedIndex = j;
+          break;
       }
-    }
+  }
   
-    var temp = "%standstill_mode%";
-    var mySelect = document.getElementById('standstill_mode');
-    for(var i, j = 0; i = mySelect.options[j]; j++) {
+  var temp = "%standstill_mode%";
+  var mySelect = document.getElementById('standstill_mode');
+  for(var i, j = 0; i = mySelect.options[j]; j++) {
       if(i.value == temp) {
-        mySelect.selectedIndex = j;
-        break;
+          mySelect.selectedIndex = j;
+          break;
       }
-    }
-    */
+  }
   
   /* Auto update stats without refresh */ 
   setInterval(function ( ) {
@@ -522,7 +517,6 @@ const char index_html[] PROGMEM = R"rawliteral(
     xhttp.send();
   }, 130 ) ;
   
-  /*
   setInterval(function ( ) {
     var xhttp = new XMLHttpRequest();
     xhttp.onreadystatechange = function() {
@@ -533,7 +527,6 @@ const char index_html[] PROGMEM = R"rawliteral(
     xhttp.open("GET", "/stallguard", true);
     xhttp.send();
   }, 150 ) ;
-  */
 
 
   /* Throttle sending rate */
