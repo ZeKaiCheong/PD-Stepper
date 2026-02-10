@@ -239,11 +239,11 @@ String processor(const String& var)
   }
 
   if(var == "small_angle"){
-    return String(SMALL_ANGLE_DEG);
+    return String(SMALL_ANGLE_DEG, 1);
   }
 
   if(var == "large_angle"){
-    return String(LARGE_ANGLE_DEG);
+    return String(LARGE_ANGLE_DEG, 1);
   }
 }
 

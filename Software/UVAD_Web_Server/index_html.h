@@ -672,6 +672,34 @@ const char index_html[] PROGMEM = R"rawliteral(
     document.getElementById('slider').value = 0; // Reset to middle position
     updateSlider(); // Trigger update
   }
+
+  // Ensure snap reset triggers even if touch drags off the slider.
+  var sliderEl = document.getElementById('slider');
+  if (sliderEl) {
+    sliderEl.addEventListener('pointerdown', function(e) {
+      sliderEl.setPointerCapture(e.pointerId);
+    });
+    sliderEl.addEventListener('pointerup', function(e) {
+      if (sliderEl.hasPointerCapture(e.pointerId)) {
+        sliderEl.releasePointerCapture(e.pointerId);
+      }
+      checkReset();
+    });
+    sliderEl.addEventListener('pointercancel', function(e) {
+      if (sliderEl.hasPointerCapture(e.pointerId)) {
+        sliderEl.releasePointerCapture(e.pointerId);
+      }
+      checkReset();
+    });
+  }
+  document.addEventListener('touchend', function() {
+    checkReset();
+  }, { passive: true });
+  window.addEventListener('blur', function() {
+    if (resetEnabled) {
+      resetSlider();
+    }
+  });
   
   /* handle button presses */
   function but1() {
