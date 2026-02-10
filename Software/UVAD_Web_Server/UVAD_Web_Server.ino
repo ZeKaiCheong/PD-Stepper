@@ -76,8 +76,8 @@ bool state = 0; //step state
 const int MOTOR_STEPS_PER_REV = 200;      // NEMA17 typical full steps/rev
 const long COUNTS_PER_FULL_STEP = 256;    // internal counter units per full-step (preserve existing resolution)
 float GEAR_RATIO = 30.0;                   // motor revolutions per output-shaft revolution (1.0 = direct drive)
-const int SMALL_ANGLE_DEG = 45;            // small step angle (output-shaft degrees)
-const int LARGE_ANGLE_DEG = 90;            // large step angle (output-shaft degrees)
+const float SMALL_ANGLE_DEG = 22.5;            // small step angle (output-shaft degrees)
+const float LARGE_ANGLE_DEG = 45.0;            // large step angle (output-shaft degrees)
 // Derived helper: counts for one output-shaft revolution
 long countsPerOutputRev(){
   return (long)( (long)MOTOR_STEPS_PER_REV * (long)COUNTS_PER_FULL_STEP * GEAR_RATIO );
@@ -92,6 +92,8 @@ long countsFromDegrees(float deg){
 #define AS5600_ADDRESS 0x36 // I2C address of the AS5600 sensor
 signed long total_encoder_counts = 0;
 unsigned long lastEncRead = 0;
+signed long encoder_offset = 0;
+bool encoder_offset_set = false;
 
 int mainFreq = 10; //Scheduled frequency = 100hz (for slower tasks, encoder reading etc)
 
@@ -122,6 +124,8 @@ volatile bool speedUpdatePending = false;
 volatile int pendingSpeed = 0;
 volatile bool posUpdatePending = false;
 volatile int pendingPosMode = 0;
+volatile bool stopRequested = false;
+volatile bool zeroAngleRequested = false;
 
 //Varaiables for position control (open loop)
 signed long setPoint = 0;
@@ -161,11 +165,9 @@ String readEncoderPos(){
   readEncoder();
   
   // Capture the initial encoder value at power-on (first call only)
-  static signed long encoder_offset = 0;
-  static bool first_call = true;
-  if (first_call) {
+  if (!encoder_offset_set) {
     encoder_offset = total_encoder_counts;
-    first_call = false;
+    encoder_offset_set = true;
   }
   
   // Calculate delta (change) since power-on
@@ -197,12 +199,12 @@ String readTMCStatus(){
 }
 
 String readStallStatus(){
-  return String(stepper_driver.getStallGuardResult());
-//  if (digitalRead(DIAG) == HIGH){
-//    return ("Stalled");
-//  } else{
-//    return ("Not Stalled");
-//  }
+//  return String(stepper_driver.getStallGuardResult());
+  if (digitalRead(DIAG) == HIGH){
+    return ("Stalled");
+  } else{
+    return ("Not Stalled");
+  }
 }
 
 
@@ -325,6 +327,16 @@ void setup() {
     request->send_P(200, "text/plain", readStallStatus().c_str());
   });
 
+  server.on("/zero_angle", HTTP_POST, [](AsyncWebServerRequest *request){
+    zeroAngleRequested = true;
+    request->send(200);
+  });
+
+  server.on("/stop", HTTP_POST, [](AsyncWebServerRequest *request){
+    stopRequested = true;
+    request->send(200);
+  });
+
   // Route to handle slider position update
   server.on("/update", HTTP_POST, [](AsyncWebServerRequest *request) {
     if (request->hasParam("slider", true)) {
@@ -387,6 +399,29 @@ void setup() {
 }
 
 void loop() {
+
+  if (stopRequested) {
+    stepper_driver.moveAtVelocity(0);
+    set_speed = 0;
+    buttonSpeed = 0;
+    pendingSpeed = 0;
+    speedUpdatePending = false;
+    pendingPosMode = 0;
+    posUpdatePending = false;
+    setPoint = CurrentPosition;
+    stopRequested = false;
+  }
+
+  if (zeroAngleRequested) {
+    readEncoder();
+    encoder_offset = total_encoder_counts;
+    encoder_offset_set = true;
+    setPoint = 0;
+    CurrentPosition = 0;
+    pendingPosMode = 0;
+    posUpdatePending = false;
+    zeroAngleRequested = false;
+  }
 
   //Handle WebServer hardware requests safely in the main thread
   if (speedUpdatePending) {
