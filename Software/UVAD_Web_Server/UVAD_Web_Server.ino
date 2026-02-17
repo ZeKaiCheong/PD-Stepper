@@ -260,9 +260,10 @@ void setup() {
   digitalWrite(CFG3, HIGH); //  -    0     1     1     0
 
   //General
-  pinMode(SW1, INPUT);
-  pinMode(SW2, INPUT);
-  pinMode(SW3, INPUT);
+  // Physical buttons disabled (PCB inputs ignored)
+//  pinMode(SW1, INPUT);
+//  pinMode(SW2, INPUT);
+//  pinMode(SW3, INPUT);
   pinMode(LED1, OUTPUT);
   pinMode(LED2, OUTPUT);
   pinMode(STEP, OUTPUT);
@@ -485,43 +486,43 @@ void loop() {
     }
   }
 
-  //Handle buttons inputs (seperate velocity control)
-  if ((millis() - lastDebounceTime) > debounceDelay) {
-    lastDebounceTime = millis();
-    bool currentIncButtonState = digitalRead(SW3);
-    bool currentDecButtonState = digitalRead(SW1);
-    bool currentResetButtonState = digitalRead(SW2);
-  
-    if (currentIncButtonState != incButtonState) {
-      incButtonState = currentIncButtonState;
-      if (incButtonState == LOW) {
-        buttonSpeed = buttonSpeed + 30;
-        if (buttonSpeed > 330){
-          buttonSpeed = 330;
-        }
-        stepper_driver.moveAtVelocity(buttonSpeed*(microsteps.toInt()));
-      }
-    }
-  
-    if (currentDecButtonState != decButtonState) {
-      decButtonState = currentDecButtonState;
-      if (decButtonState == LOW) {
-        buttonSpeed = buttonSpeed -30;
-        if (buttonSpeed < -330){
-          buttonSpeed = -330;
-        }
-        stepper_driver.moveAtVelocity(buttonSpeed*(microsteps.toInt()));
-      }
-    }
-  
-    if (currentResetButtonState != resetButtonState) {
-      resetButtonState = currentResetButtonState;
-      if (resetButtonState == LOW) {
-        buttonSpeed = 0;
-        stepper_driver.moveAtVelocity(0);
-      }
-    }
-  }
+  // Physical button handling disabled (PCB inputs ignored)
+//  if ((millis() - lastDebounceTime) > debounceDelay) {
+//    lastDebounceTime = millis();
+//    bool currentIncButtonState = digitalRead(SW3);
+//    bool currentDecButtonState = digitalRead(SW1);
+//    bool currentResetButtonState = digitalRead(SW2);
+//  
+//    if (currentIncButtonState != incButtonState) {
+//      incButtonState = currentIncButtonState;
+//      if (incButtonState == LOW) {
+//        buttonSpeed = buttonSpeed + 30;
+//        if (buttonSpeed > 330){
+//          buttonSpeed = 330;
+//        }
+//        stepper_driver.moveAtVelocity(buttonSpeed*(microsteps.toInt()));
+//      }
+//    }
+//  
+//    if (currentDecButtonState != decButtonState) {
+//      decButtonState = currentDecButtonState;
+//      if (decButtonState == LOW) {
+//        buttonSpeed = buttonSpeed -30;
+//        if (buttonSpeed < -330){
+//          buttonSpeed = -330;
+//        }
+//        stepper_driver.moveAtVelocity(buttonSpeed*(microsteps.toInt()));
+//      }
+//    }
+//  
+//    if (currentResetButtonState != resetButtonState) {
+//      resetButtonState = currentResetButtonState;
+//      if (resetButtonState == LOW) {
+//        buttonSpeed = 0;
+//        stepper_driver.moveAtVelocity(0);
+//      }
+//    }
+//  }
 
   
 }
