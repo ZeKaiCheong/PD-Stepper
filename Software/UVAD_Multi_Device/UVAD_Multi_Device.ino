@@ -165,11 +165,11 @@ const float DIV_RATIO = 0.1189427313; // 20 k + 2.7 k divider
 
 // NVS motor settings (strings, matching existing keys)
 String enabled1       = "enabled";
-String setVoltage     = "12";
-String microsteps     = "32";
+String setVoltage     = "5";
+String microsteps     = "1";
 String current        = "30";
 String stallThreshold = "10";
-String standstillMode = "NORMAL";
+String standstillMode = "FREEWHEELING";
 
 // =====================================================================
 //  VOLATILE FLAGS — web-server / ESP-NOW callback → loop()
@@ -343,18 +343,18 @@ void readSettings() {
   if (enabled1 == "") {
     preferences.end();
     enabled1       = "enabled";
-    setVoltage     = "12";
-    microsteps     = "32";
+    setVoltage     = "5";
+    microsteps     = "1";
     current        = "30";
     stallThreshold = "10";
-    standstillMode = "NORMAL";
+    standstillMode = "FREEWHEELING";
     writeSettings();
   } else {
-    setVoltage     = preferences.getString("voltage",        "12");
-    microsteps     = preferences.getString("microsteps",     "32");
+    setVoltage     = preferences.getString("voltage",        "5");
+    microsteps     = preferences.getString("microsteps",     "1");
     current        = preferences.getString("current",        "30");
     stallThreshold = preferences.getString("stallThreshold", "10");
-    standstillMode = preferences.getString("standstillMode", "NORMAL");
+    standstillMode = preferences.getString("standstillMode", "FREEWHEELING");
     preferences.end();
   }
 }
@@ -927,9 +927,9 @@ void setup() {
   pinMode(CFG1, OUTPUT);
   pinMode(CFG2, OUTPUT);
   pinMode(CFG3, OUTPUT);
-  digitalWrite(CFG1, LOW);
+  digitalWrite(CFG1, HIGH); // Default 5 V
   digitalWrite(CFG2, LOW);
-  digitalWrite(CFG3, HIGH); // Default 12 V
+  digitalWrite(CFG3, LOW);
 
   // --- General I/O ---
   // Physical buttons disabled (PCB inputs ignored)
