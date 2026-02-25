@@ -2,15 +2,16 @@
  * UVAD Multi-Device Controller
  * ============================
  * Same firmware for every ESP32-S3 unit.
- *   - First unit powered on  → Coordinator (SoftAP + Web UI + ESP-NOW hub)
+ *   - First unit powered on  → Coordinator (wins election as sole candidate;
+ *     ties broken by lowest MAC)
  *   - Subsequent units       → Client      (ESP-NOW motor node)
  *
  * Phone / tablet connects to the "UVAD-AP" WiFi network and opens
  * 192.168.4.1 in a browser. All discovered motors appear as cards
  * and can be controlled from that single page.
  *
- * Failsafe: if the coordinator disappears, a client automatically
- * promotes itself to coordinator after a randomised backoff.
+ * Failsafe: if the coordinator disappears, clients enter an election
+ * (lowest MAC wins) and the winner promotes itself to coordinator.
  *
  * Dependencies (same as single-device UVAD):
  *   ESPAsyncWebServer  – https://github.com/ESP32Async/ESPAsyncWebServer
@@ -63,7 +64,7 @@
 
 // Misc
 #define VBUS    4
-#define NTC     7
+#define NTC     7    // NOTE: shares GPIO 7 with SPREAD; neither is used in this sketch
 #define LED1    10
 #define LED2    12
 #define SW1     35
@@ -496,6 +497,7 @@ void addBroadcastPeer() {
   memcpy(pi.peer_addr, BROADCAST_MAC, 6);
   pi.channel = UVAD_AP_CHANNEL;
   pi.encrypt = false;
+  // Coordinator sends via AP interface; clients and electing devices use STA interface
   pi.ifidx = (currentRole == ROLE_COORDINATOR) ? WIFI_IF_AP : WIFI_IF_STA;
   esp_now_add_peer(&pi);
 }
@@ -835,7 +837,7 @@ void registerWebRoutes() {
 }
 
 // =====================================================================
-//  ROLE SELECTION  (scan for existing AP)
+//  ROLE SELECTION  (election protocol via ESP-NOW)
 // =====================================================================
 void startElection() {
   Serial.println("=== Starting coordinator election ===");
@@ -991,7 +993,7 @@ void setup() {
 }
 
 // =====================================================================
-//  COMMON LOOP — motor control, buttons, encoder  (both roles)
+//  COMMON LOOP — motor control, encoder, volatile-flag dispatch  (both roles)
 // =====================================================================
 void commonLoop() {
 

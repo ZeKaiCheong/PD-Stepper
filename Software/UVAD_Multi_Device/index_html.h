@@ -1,7 +1,7 @@
 /*
  * index_html.h — Multi-device UVAD controller web UI
  *
- * This page is fully dynamic: JavaScript fetches /devices every 750 ms
+ * This page is fully dynamic: JavaScript fetches /devices every 150 ms
  * and builds a card for each discovered motor.  No template processor
  * is used, so the % character is safe in CSS / JS.
  */

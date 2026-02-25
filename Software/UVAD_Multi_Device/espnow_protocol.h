@@ -23,7 +23,7 @@
 #define COORDINATOR_TIMEOUT_MS   10000  // Client declares coordinator dead after this
 #define DEVICE_OFFLINE_MS         8000  // Coordinator marks a client offline after this
 #define SELF_STATUS_INTERVAL_MS    100  // Coordinator self-sensor update interval
-#define REELECTION_MAX_DELAY_MS   3000  // Random backoff ceiling for coordinator election
+#define REELECTION_MAX_DELAY_MS   3000  // Unused — reserved for future randomised election backoff
 #define ELECTION_DURATION_MS      4000  // Full election round duration
 #define ELECTION_BROADCAST_MS      500  // Election broadcast interval
 #define CLIENT_NO_HB_TIMEOUT_MS  15000  // Client re-elects if no heartbeat ever received
@@ -40,7 +40,7 @@ enum MsgType : uint8_t {
   MSG_STATUS    = 0x04,   // Client  → Coordinator   (broadcast)
   MSG_RENAME    = 0x05,   // Coordinator → Client    (unicast)
   MSG_ELECTION  = 0x06,   // All → All               (broadcast during election)
-  MSG_ANNOUNCE  = 0x07,   // New Coordinator → All   (broadcast)
+  MSG_ANNOUNCE  = 0x07,   // Coordinator → All  (broadcast; sent by new or existing coordinator)
 };
 
 // =============== Command Sub-types ===============
