@@ -24,6 +24,9 @@
 #define DEVICE_OFFLINE_MS         8000  // Coordinator marks a client offline after this
 #define SELF_STATUS_INTERVAL_MS    100  // Coordinator self-sensor update interval
 #define REELECTION_MAX_DELAY_MS   3000  // Random backoff ceiling for coordinator election
+#define ELECTION_DURATION_MS      4000  // Full election round duration
+#define ELECTION_BROADCAST_MS      500  // Election broadcast interval
+#define CLIENT_NO_HB_TIMEOUT_MS  15000  // Client re-elects if no heartbeat ever received
 
 // =============== Limits ===============
 #define MAX_DEVICES         10
@@ -36,6 +39,8 @@ enum MsgType : uint8_t {
   MSG_COMMAND   = 0x03,   // Coordinator → Client    (unicast)
   MSG_STATUS    = 0x04,   // Client  → Coordinator   (broadcast)
   MSG_RENAME    = 0x05,   // Coordinator → Client    (unicast)
+  MSG_ELECTION  = 0x06,   // All → All               (broadcast during election)
+  MSG_ANNOUNCE  = 0x07,   // New Coordinator → All   (broadcast)
 };
 
 // =============== Command Sub-types ===============
@@ -87,6 +92,18 @@ struct __attribute__((packed)) MsgStatus {
 struct __attribute__((packed)) MsgRename {
   uint8_t type;                     // MSG_RENAME
   char    name[DEVICE_NAME_LEN];    // New name to store in NVS
+};
+
+// Election: device proposes itself as coordinator candidate
+struct __attribute__((packed)) MsgElection {
+  uint8_t type;                     // MSG_ELECTION
+  uint8_t mac[6];                   // Candidate's MAC (lowest wins)
+};
+
+// Coordinator announce: election winner or existing coordinator declares itself
+struct __attribute__((packed)) MsgAnnounce {
+  uint8_t type;                     // MSG_ANNOUNCE
+  uint8_t mac[6];                   // Coordinator's MAC
 };
 
 // Broadcast address constant

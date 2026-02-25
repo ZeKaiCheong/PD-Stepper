@@ -29,6 +29,7 @@
 #include <WiFi.h>
 #include <esp_wifi.h>
 #include <esp_now.h>
+#include <esp_mac.h>
 #include <esp_idf_version.h>
 #include <ESPAsyncWebServer.h>   // ESP32Async version
 #include <AsyncTCP.h>            // ESP32Async version
@@ -96,7 +97,7 @@ long countsFromDegrees(float deg) {
 // =====================================================================
 //  ROLE MANAGEMENT
 // =====================================================================
-enum Role : uint8_t { ROLE_UNDECIDED, ROLE_COORDINATOR, ROLE_CLIENT };
+enum Role : uint8_t { ROLE_UNDECIDED, ROLE_COORDINATOR, ROLE_CLIENT, ROLE_ELECTING };
 volatile Role currentRole = ROLE_UNDECIDED;
 
 // =====================================================================
@@ -192,6 +193,14 @@ char          espnowNewName[DEVICE_NAME_LEN];
 // Heartbeat tracking (client side)
 volatile unsigned long lastHeartbeatRecv = 0;
 volatile bool          heartbeatEverRecv = false;
+
+// Election state
+uint8_t       bestCandidateMac[6]  = {0xFF,0xFF,0xFF,0xFF,0xFF,0xFF};
+unsigned long electionStartTime    = 0;
+unsigned long lastElectionBcast    = 0;
+unsigned long clientStartTime      = 0;
+volatile bool coordinatorFound     = false;  // Recv callback → electingLoop()
+volatile bool demoteRequested      = false;  // Recv callback → coordinatorLoop()
 
 // =====================================================================
 //  TIMING
@@ -514,6 +523,26 @@ void onEspNowRecv(const uint8_t *mac, const uint8_t *data, int len) {
   if (len < 1) return;
   uint8_t type = data[0];
 
+  // ---- Election: process election and announce messages ----
+  if (currentRole == ROLE_ELECTING) {
+    if (type == MSG_ELECTION && len >= (int)sizeof(MsgElection)) {
+      MsgElection msg;
+      memcpy(&msg, data, sizeof(MsgElection));
+      Serial.printf("[ELECT] Received candidate %s (current best %s)\n",
+                     macToHex(msg.mac).c_str(), macToHex(bestCandidateMac).c_str());
+      if (memcmp(msg.mac, bestCandidateMac, 6) < 0) {
+        memcpy(bestCandidateMac, msg.mac, 6);
+      }
+    }
+    else if (type == MSG_ANNOUNCE || type == MSG_HEARTBEAT) {
+      // An existing coordinator is active — abort election and join as client
+      Serial.printf("[ELECT] Coordinator active (msg type 0x%02X from %s) — aborting election\n",
+                     type, macToHex(mac).c_str());
+      coordinatorFound = true;
+    }
+    return; // During election, ignore all other message types
+  }
+
   if (currentRole == ROLE_COORDINATOR) {
     // ---- Coordinator receives beacons and status from clients ----
     if (type == MSG_BEACON && len >= (int)sizeof(MsgBeacon)) {
@@ -550,11 +579,26 @@ void onEspNowRecv(const uint8_t *mac, const uint8_t *data, int len) {
         strncpy(devices[idx].name, msg.name, DEVICE_NAME_LEN - 1);
       }
     }
+
+    // ---- Coordinator conflict detection ----
+    if (type == MSG_HEARTBEAT && !macEqual(mac, myMac)) {
+      // Another coordinator is broadcasting heartbeats — higher MAC yields
+      if (memcmp(myMac, mac, 6) > 0) {
+        demoteRequested = true;
+      }
+    }
+    // ---- Respond to election messages so electing devices know we exist ----
+    if (type == MSG_ELECTION) {
+      sendCoordinatorAnnounce();
+    }
   }
   else if (currentRole == ROLE_CLIENT) {
     // ---- Client receives commands, renames, and heartbeats ----
     if (type == MSG_HEARTBEAT && len >= (int)sizeof(MsgHeartbeat)) {
       lastHeartbeatRecv = millis();
+      if (!heartbeatEverRecv) {
+        Serial.printf("[CLIENT] First heartbeat received from %s\n", macToHex(mac).c_str());
+      }
       heartbeatEverRecv = true;
     }
     else if (type == MSG_COMMAND && len >= (int)sizeof(MsgCommand)) {
@@ -598,6 +642,20 @@ void sendBeacon() {
   msg.type = MSG_BEACON;
   strncpy(msg.name, myDeviceName, DEVICE_NAME_LEN - 1);
   msg.name[DEVICE_NAME_LEN - 1] = '\0';
+  esp_now_send(BROADCAST_MAC, (uint8_t *)&msg, sizeof(msg));
+}
+
+void sendElection() {
+  MsgElection msg;
+  msg.type = MSG_ELECTION;
+  memcpy(msg.mac, myMac, 6);
+  esp_now_send(BROADCAST_MAC, (uint8_t *)&msg, sizeof(msg));
+}
+
+void sendCoordinatorAnnounce() {
+  MsgAnnounce msg;
+  msg.type = MSG_ANNOUNCE;
+  memcpy(msg.mac, myMac, 6);
   esp_now_send(BROADCAST_MAC, (uint8_t *)&msg, sizeof(msg));
 }
 
@@ -779,26 +837,24 @@ void registerWebRoutes() {
 // =====================================================================
 //  ROLE SELECTION  (scan for existing AP)
 // =====================================================================
-void determineRole() {
-  Serial.println("Scanning for existing UVAD-AP ...");
-  WiFi.mode(WIFI_STA);
-  int n = WiFi.scanNetworks(false, false, false, 2000); // 2 s scan — long enough to catch beacons
-  bool found = false;
-  for (int i = 0; i < n; i++) {
-    if (String(WiFi.SSID(i)) == UVAD_AP_SSID) {
-      found = true;
-      break;
-    }
-  }
-  WiFi.scanDelete();
+void startElection() {
+  Serial.println("=== Starting coordinator election ===");
+  currentRole = ROLE_ELECTING;
+  coordinatorFound = false;
+  memcpy(bestCandidateMac, myMac, 6);
+  electionStartTime = millis();
+  lastElectionBcast = 0;
 
-  if (found) {
-    currentRole = ROLE_CLIENT;
-    Serial.println("→ Found AP. Role = CLIENT");
-  } else {
-    currentRole = ROLE_COORDINATOR;
-    Serial.println("→ No AP found. Role = COORDINATOR");
-  }
+  esp_now_deinit();
+  WiFi.mode(WIFI_STA);
+  esp_wifi_set_channel(UVAD_AP_CHANNEL, WIFI_SECOND_CHAN_NONE);
+  setupEspNow();
+}
+
+void determineRole() {
+  // Small random jitter (0–1 s) to stagger simultaneous boots
+  delay(esp_random() % 1000);
+  startElection();
 }
 
 // =====================================================================
@@ -830,19 +886,23 @@ void setupCoordinator() {
 }
 
 void setupClient() {
+  currentRole = ROLE_CLIENT;
+  esp_now_deinit();
   WiFi.mode(WIFI_STA);
   esp_wifi_set_channel(UVAD_AP_CHANNEL, WIFI_SECOND_CHAN_NONE);
   setupEspNow();
-  lastHeartbeatRecv = millis(); // Start timeout window from now
+  lastHeartbeatRecv = millis();
+  heartbeatEverRecv = false;
+  clientStartTime   = millis();
   Serial.println("Client ready — waiting for coordinator heartbeat");
 }
 
-// Failsafe: client promotes itself to coordinator
 void becomeCoordinator() {
   Serial.println("=== Promoting to COORDINATOR ===");
   esp_now_deinit();
-  // Clear device registry
   memset(devices, 0, sizeof(devices));
+
+  currentRole = ROLE_COORDINATOR;  // Set BEFORE setupEspNow so broadcast peer uses AP interface
 
   WiFi.mode(WIFI_AP_STA);
   WiFi.softAP(UVAD_AP_SSID, UVAD_AP_PASSWORD, UVAD_AP_CHANNEL);
@@ -852,10 +912,9 @@ void becomeCoordinator() {
   setupEspNow();
   registerSelf();
 
-  currentRole = ROLE_COORDINATOR;
-
   registerWebRoutes();
   server.begin();
+  digitalWrite(LED1, HIGH); // Coordinator = solid ON
   Serial.println("Promoted — web server started");
 }
 
@@ -911,25 +970,19 @@ void setup() {
   Serial.begin(115200);
   Serial.println("UVAD Multi-Device " FIRMWARE_VERSION);
 
-  // --- Learn own MAC (STA mode MAC, used as device ID) ---
+  // --- Learn own MAC (read from eFuse — reliable regardless of WiFi state) ---
+  esp_efuse_mac_get_default(myMac);
   WiFi.mode(WIFI_STA);
-  WiFi.macAddress(myMac);
   Serial.printf("MAC: %s\n", macToHex(myMac).c_str());
 
   // --- Device name ---
   loadDeviceName();
   Serial.printf("Name: %s\n", myDeviceName);
 
-  // --- Role selection ---
-  determineRole();
-  if (currentRole == ROLE_COORDINATOR) {
-    setupCoordinator();
-  } else {
-    setupClient();
-  }
-
-  // --- Register web routes even for client (needed if promoted later) ---
+  // --- Role selection via election protocol ---
+  // Register web routes now so they're ready for any role transition
   registerWebRoutes();
+  determineRole();
 
   // --- Boot LED flash ---
   digitalWrite(LED1, HIGH);
@@ -1067,15 +1120,64 @@ void commonLoop() {
 }
 
 // =====================================================================
+//  ELECTING LOOP  — runs while ROLE_ELECTING, handles election protocol
+// =====================================================================
+void electingLoop() {
+  unsigned long now = millis();
+
+  // Another coordinator responded — join as client immediately
+  if (coordinatorFound) {
+    Serial.println("Coordinator found during election — becoming client");
+    setupClient();
+    return;
+  }
+
+  // Broadcast our candidacy periodically
+  if (now - lastElectionBcast > ELECTION_BROADCAST_MS) {
+    lastElectionBcast = now;
+    sendElection();
+  }
+
+  // Election duration elapsed — decide winner
+  if (now - electionStartTime > ELECTION_DURATION_MS) {
+    if (memcmp(bestCandidateMac, myMac, 6) == 0) {
+      Serial.println("Election won — becoming coordinator");
+      becomeCoordinator();
+      // Announce so any late-arriving electors know immediately
+      sendCoordinatorAnnounce();
+    } else {
+      Serial.printf("Election lost to %s — becoming client\n",
+                     macToHex(bestCandidateMac).c_str());
+      setupClient();
+    }
+    return;
+  }
+
+  // Fast LED blink during election
+  digitalWrite(LED1, (millis() / 150) % 2);
+}
+
+// =====================================================================
 //  COORDINATOR LOOP
 // =====================================================================
 void coordinatorLoop() {
   unsigned long now = millis();
 
+  // --- Check for demotion (coordinator conflict resolution) ---
+  if (demoteRequested) {
+    demoteRequested = false;
+    Serial.println("=== Demoting to CLIENT (conflict resolution) ===");
+    esp_now_deinit();
+    memset(devices, 0, sizeof(devices));
+    setupClient();
+    return;
+  }
+
   // --- Send heartbeat ---
   if (now - lastHeartbeatSend > HEARTBEAT_INTERVAL_MS) {
     lastHeartbeatSend = now;
     sendHeartbeat();
+    Serial.printf("[COORD] Heartbeat sent | %d devices online\n", countOnlineDevices());
   }
 
   // --- Update own status in device registry ---
@@ -1103,12 +1205,21 @@ void coordinatorLoop() {
 //  CLIENT LOOP
 // =====================================================================
 void clientLoop() {
+  // Snapshot volatiles BEFORE millis() to prevent unsigned underflow.
+  // If the callback updates lastHeartbeatRecv between our snapshot and millis(),
+  // millis() will still be >= our snapshot, keeping the subtraction safe.
+  unsigned long lastHbSnap = lastHeartbeatRecv;
+  bool          hbEverSnap = heartbeatEverRecv;
   unsigned long now = millis();
 
   // --- Send beacon periodically ---
   if (now - lastBeaconSend > BEACON_INTERVAL_MS) {
     lastBeaconSend = now;
     sendBeacon();
+    Serial.printf("[CLIENT] Beacon sent | hbEver=%d hbAge=%lums clientAge=%lums\n",
+                   (int)hbEverSnap,
+                   hbEverSnap ? (now - lastHbSnap) : 0UL,
+                   now - clientStartTime);
   }
 
   // --- Send status periodically ---
@@ -1117,37 +1228,18 @@ void clientLoop() {
     sendStatusMsg();
   }
 
-  // --- Coordinator timeout / failsafe re-election ---
-  if (heartbeatEverRecv && (now - lastHeartbeatRecv > COORDINATOR_TIMEOUT_MS)) {
-    Serial.println("Coordinator timeout — attempting re-election");
+  // --- Coordinator timeout → start new election ---
+  if (hbEverSnap && (now - lastHbSnap > COORDINATOR_TIMEOUT_MS)) {
+    Serial.println("Coordinator timeout — starting election");
+    startElection();
+    return;
+  }
 
-    // Random backoff based on MAC to avoid two clients promoting simultaneously.
-    // NOTE: delay() blocks loop() — motor coasts at its last commanded velocity
-    // (TMC2209 maintains velocity autonomously). Position stepping pauses briefly.
-    unsigned long backoff = ((unsigned long)myMac[4] << 8 | myMac[5]) % REELECTION_MAX_DELAY_MS;
-    delay(backoff);
-
-    // Re-scan for AP
-    WiFi.mode(WIFI_STA);
-    int n = WiFi.scanNetworks(false, false, false, 2000);
-    bool found = false;
-    for (int i = 0; i < n; i++) {
-      if (String(WiFi.SSID(i)) == UVAD_AP_SSID) { found = true; break; }
-    }
-    WiFi.scanDelete();
-
-    if (!found) {
-      // No coordinator — promote self
-      becomeCoordinator();
-    } else {
-      // Someone else already took over — stay client
-      Serial.println("Another coordinator found — staying client");
-      esp_now_deinit();
-      WiFi.mode(WIFI_STA);
-      esp_wifi_set_channel(UVAD_AP_CHANNEL, WIFI_SECOND_CHAN_NONE);
-      setupEspNow();
-      lastHeartbeatRecv = millis();
-    }
+  // --- Bootstrap fix: never received a heartbeat within timeout ---
+  if (!hbEverSnap && (now - clientStartTime > CLIENT_NO_HB_TIMEOUT_MS)) {
+    Serial.println("No heartbeat ever received — starting election");
+    startElection();
+    return;
   }
 
   // LED1 flicker when in client mode (distinguishes from coordinator)
@@ -1162,6 +1254,8 @@ void loop() {
 
   if (currentRole == ROLE_COORDINATOR) {
     coordinatorLoop();
+  } else if (currentRole == ROLE_ELECTING) {
+    electingLoop();
   } else {
     clientLoop();
   }
